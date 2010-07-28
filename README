@@ -1,0 +1,4 @@
+JazzTrainer - a tool to learn jazz chords with a MIDI keyboard
+
+Requires libportmidi0
+To start it just run trainer.py or install it with "sudo python setup.py install"

@@ -1,0 +1,198 @@
+#!/usr/bin/python2.6
+#
+# JazzTrainer - a tool to learn jazz chords
+# Copyright (C) 2010 Emil Loer
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import random
+import os.path
+
+try:
+	import pygtk
+	pygtk.require('2.0')
+	import gtk
+	import gobject
+	import glib
+except ImportError:
+	raise SystemExit("This program requires Python bindings for GTK, GObject and GLib.")
+
+import jazztrainer.chords as chords
+from jazztrainer.midi import MidiHandler
+from jazztrainer.piano import Piano
+from jazztrainer.pianopanel import PianoPanel
+from jazztrainer.util import showmessage
+from jazztrainer.gladewrapper import GladeWrapper
+from jazztrainer.version import *
+
+class ChordTrainerLogic:
+	def __init__(self,chordset,view):
+		self.chordset=chordset
+		self.view=view
+		self.draw()
+
+	def draw(self):
+		# FIXME: change the function name because it's ambiguous
+		root=random.randint(0,len(chords.notes)-1)
+		rootname=random.choice(chords.notes[root])
+		chordname,symbol,category,intervals=random.choice(self.chordset)
+		symbol=rootname+symbol
+		self.view.setmarkup("<span font=\"48px\">"+symbol+"</span>\n<span font=\"12px\">"+category+"</span>")
+		self.chordnotes=sorted([chords.offsets[x]+root for x in intervals])
+		shift=(self.chordnotes[0]/12)*12
+		self.chordnotes=[x-shift for x in self.chordnotes]
+		self.view.piano.draw(self.chordnotes) # TODO: center notes on the keyboard
+		# FIXME: some unused stuff here
+
+	def midicallback(self,pitchset):
+		if not pitchset:
+			# FIXME: this method is glitchy
+			self.view.nobg()
+			return
+		notes=sorted(pitchset)
+		shift=(notes[0]/12)*12
+		notes=[n-shift for n in notes]
+		if notes==self.chordnotes:
+			self.draw()
+			self.view.greenbg()
+			# TODO: update score
+		else:
+			self.view.redbg()
+			# TODO: update score
+
+class ChordTrainer(GladeWrapper):
+	def on_mainwindow_destroy(self, widget, data=None):
+		self.midihandler.stopthread()
+		gtk.main_quit()
+
+	def on_quitmenuitem_activate(self, widget, data=None):
+		self.on_mainwindow_destroy(widget,data)
+
+	def on_stopsessionmenuitem_activate(self,widget,data=None):
+		self.midihandler.stopthread()
+		self.logic=None
+		self.stopsessionmenuitem.set_sensitive(False)
+		self.startsessionmenuitem.set_sensitive(True)
+		self.skipbutton.set_sensitive(False)
+		# FIXME: remove current view instead of clearing it
+		self.view.setmarkup("")
+		self.view.piano.draw()
+
+	def on_aboutmenuitem_activate(self,widget,data=None):
+		dlg=gtk.AboutDialog()
+		dlg.set_transient_for(self.mainwindow)
+		dlg.set_name(APPNAME)
+		dlg.set_version(APPVERSION)
+		dlg.set_authors(APPAUTHORS)
+		dlg.set_comments(APPSHORTDESC)
+		dlg.set_copyright(APPCOPYRIGHT)
+		dlg.set_website(APPWEBSITE)
+		dlg.set_license(open(os.path.join(DATADIR,"license")).read())
+		dlg.run()
+		dlg.destroy()
+
+	def on_skipbutton_clicked(self,widget,data=None):
+		if self.logic:
+			self.logic.draw() # TODO: skip function
+
+	def on_startsessionmenuitem_activate(self,widget,data=None):
+		if self.midihandler.deviceid==-1:
+			showmessage(self.mainwindow,"You need to select a MIDI input device first.")
+			return
+		res=self.chordselector.run()
+		if res==[]:
+			showmessage(self.mainwindow,"No chords were selected.")
+			return
+		elif res==None:
+			return
+		self.stopsessionmenuitem.set_sensitive(True)
+		self.startsessionmenuitem.set_sensitive(False)
+		self.skipbutton.set_sensitive(True)
+		# TODO: instantiate a new view here
+		self.logic=ChordTrainerLogic(res,self.view)
+		self.midihandler.callback=self.logic.midicallback
+		self.midihandler.startthread()
+
+	def on_midinputmenuitem_activate(self,widget,data=None):
+		newdev=self.midiinputselector.run(self.midihandler.getdevice())
+		if newdev!=None:
+			self.midihandler.changedevice(newdev)
+
+	def __init__(self):
+		GladeWrapper.__init__(self,os.path.join(DATADIR,"window.glade"))
+
+		self.midihandler=MidiHandler()
+		self.chordselector=ChordSelector()
+		self.midiinputselector=MidiInputSelector(self.midihandler)
+
+		self.skipbutton.set_sensitive(False) # not set by gtkbuilder
+
+		self.view=PianoPanel()
+		self.viewbox.pack_start(self.view.pianopanel) # FIXME: use toplevel
+
+class ChordSelector(GladeWrapper):
+	def __init__(self):
+		GladeWrapper.__init__(self,os.path.join(DATADIR,"chordselector.glade"))
+
+		# build chord database
+		for (catname,catchords) in chords.chords:
+			n=self.chordstore.append(None,[catname,0,"",None])
+			for (chordname,chordsymbol,intervals) in catchords:
+				self.chordstore.append(n,[chordname,0,chordsymbol,intervals]) 
+
+	def on_cellrenderertoggle1_toggled(self,widget,path,data=None):
+		if not ":" in path:
+			newstate=1-self.chordstore[path][1]
+			self.chordstore[path][1]=newstate
+			for e in self.chordstore[path].iterchildren():
+				e[1]=newstate
+		else:
+			self.chordstore[path][1]=1-self.chordstore[path][1]
+
+	def run(self):
+		if self.chordselector.run()==1:
+			res=[(cname,csym,cat[0],intervals) for cat in self.chordstore for (cname,flag,csym,intervals) in cat.iterchildren() if flag==True]
+		else:
+			res=None
+		self.chordselector.hide()
+		return res
+
+class MidiInputSelector(GladeWrapper):
+	def __init__(self,midihandler):
+		GladeWrapper.__init__(self,os.path.join(DATADIR,"midiinput.glade"))
+
+		# TODO: add support for adding/removing devices while app is running
+		for e in midihandler.getinputs():
+			self.devicestore.append(e)
+
+	def run(self,curdev):
+		for e in self.devicestore:
+			if e[1]==curdev:
+				self.devicelist.get_selection().select_iter(e.iter)
+				break
+		if self.midiinputdialog.run()==1:
+			model,item=self.devicelist.get_selection().get_selected()
+			if item:
+				device=model.get_value(item,1)
+			else:
+				device=None
+		else:
+			device=None
+		self.midiinputdialog.hide()
+		return device
+
+if __name__ == "__main__":
+	gtk.gdk.threads_init()
+	ct=ChordTrainer()
+	ct.run()

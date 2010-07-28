@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk+" version="2.20"/>
+  <!-- interface-naming-policy project-wide -->
+  <object class="GtkVBox" id="pianopanel">
+    <property name="visible">True</property>
+    <child>
+      <object class="GtkEventBox" id="chordlabelbox">
+        <property name="visible">True</property>
+        <child>
+          <object class="GtkLabel" id="chordlabel">
+            <property name="width_request">400</property>
+            <property name="height_request">100</property>
+            <property name="visible">True</property>
+            <property name="use_markup">True</property>
+            <property name="justify">center</property>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkEventBox" id="pianobox">
+        <property name="visible">True</property>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+</interface>

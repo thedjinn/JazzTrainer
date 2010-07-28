@@ -1,0 +1,11 @@
+TODO:
+
+- Scale trainer
+- Playback function with added root notes
+- i18n support
+- Dialog parenting
+- Make Piano class a widget
+- .desktop file
+- Application icon
+- Fix more bugs in the portmidi wrapper, or write/find a better one instead
+- Write a decent readme file

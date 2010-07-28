@@ -1,0 +1,2 @@
+include trainer.py README COPYING
+recursive-include data *
